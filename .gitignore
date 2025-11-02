@@ -1,0 +1,15 @@
+# Visual Studio / .NET игнориране
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS файлове
+Thumbs.db
+*.DS_Store
+
+# Build output
+*.log
