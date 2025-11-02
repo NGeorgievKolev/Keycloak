@@ -23,6 +23,9 @@ corsSettings.Validate();
 builder.Services.AddSingleton(authenticationOptions);
 builder.Services.AddSingleton(corsSettings);
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -47,6 +50,9 @@ builder.Services.AddCors(policy =>
             .AllowAnyMethod()));
 
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseCors();
 app.UseAuthentication();
