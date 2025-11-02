@@ -29,6 +29,9 @@ builder.Services.AddSingleton(endpointsOptions);
 
 builder.Services.AddRazorPages();
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 builder.Services
     .AddAuthentication(options =>
     {
@@ -64,6 +67,9 @@ builder.Services.AddHttpClient(ApiEndpointsOptions.HttpClientName, (sp, client) 
 });
 
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
