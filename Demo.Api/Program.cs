@@ -1,32 +1,50 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using System.Security.Claims;
+using Demo.Api.Configuration;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("https://localhost:5002", "http://localhost:5003");
 
-var authority = "http://localhost:8080/realms/demo";
-var audience = "dotnet-api"; // това е Client ID-то, което зададе като audience
+var authenticationOptions = builder.Configuration
+    .GetRequiredSection(KeycloakAuthenticationOptions.SectionName)
+    .Get<KeycloakAuthenticationOptions>()
+    ?? throw new InvalidOperationException("Keycloak authentication configuration is missing.");
+
+authenticationOptions.Validate();
+
+var corsSettings = builder.Configuration
+    .GetSection(CorsSettings.SectionName)
+    .Get<CorsSettings>()
+    ?? new CorsSettings();
+
+corsSettings.Validate();
+
+builder.Services.AddSingleton(authenticationOptions);
+builder.Services.AddSingleton(corsSettings);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = authority;
-        options.Audience = audience;
-        options.RequireHttpsMetadata = false; // защото Keycloak е на http локално
+        options.Authority = authenticationOptions.Authority;
+        options.Audience = authenticationOptions.Audience;
+        options.RequireHttpsMetadata = authenticationOptions.RequireHttpsMetadata;
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            NameClaimType = "preferred_username",
-            RoleClaimType = "roles"
+            ValidateIssuer = authenticationOptions.ValidateIssuer,
+            NameClaimType = authenticationOptions.NameClaimType,
+            RoleClaimType = authenticationOptions.RoleClaimType
         };
     });
 
 builder.Services.AddAuthorization();
 
-// Разрешаваме заявки от Web апа (CORS)
-builder.Services.AddCors(p => p.AddDefaultPolicy(policy =>
-    policy.WithOrigins("https://localhost:5001")
-          .AllowAnyHeader()
-          .AllowAnyMethod()));
+builder.Services.AddCors(policy =>
+    policy.AddDefaultPolicy(corsPolicyBuilder =>
+        corsPolicyBuilder
+            .WithOrigins(corsSettings.AllowedOrigins.ToArray())
+            .AllowAnyHeader()
+            .AllowAnyMethod()));
 
 var app = builder.Build();
 
@@ -34,17 +52,19 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Публичен route
-app.MapGet("/ping", () => "pong");
+app.MapGet("/ping", () => Results.Ok("pong"));
 
-// Защитен route – изисква валиден access token
-app.MapGet("/me", (HttpContext ctx) =>
+app.MapGet("/me", (ClaimsPrincipal user, KeycloakAuthenticationOptions options) =>
 {
-    if (!ctx.User.Identity?.IsAuthenticated ?? true)
+    if (user.Identity?.IsAuthenticated is not true)
+    {
         return Results.Unauthorized();
+    }
 
-    var name = ctx.User.Identity?.Name ?? ctx.User.FindFirst("preferred_username")?.Value ?? "unknown";
-    var roles = ctx.User.FindAll("roles").Select(r => r.Value).ToArray();
+    var name = user.Identity?.Name
+               ?? user.FindFirst(options.NameClaimType)?.Value
+               ?? "unknown";
+    var roles = user.FindAll(options.RoleClaimType).Select(r => r.Value).ToArray();
     return Results.Ok(new { name, roles });
 }).RequireAuthorization();
 
